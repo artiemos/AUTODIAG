@@ -1,0 +1,402 @@
+<style>
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: #f0f4f8;
+  margin: 0;
+  padding: 20px;
+}
+.tab-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+.tab-buttons button {
+  background: #1976d2;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.tab-buttons button.active {
+  background: #0d47a1;
+}
+.tab-content {
+  display: none;
+  padding: 20px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+}
+.tab-content.active {
+  display: block;
+}
+#welcomeMsg {
+  background: #fffde7;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  font-size: 16px;
+  border: 1px solid #fdd835;
+}
+</style>
+
+<h1 style="text-align:center;color:#1976d2;">🛠️ AutoDiag Ultra V3 – AMRO TECH</h1>
+<div id="welcomeMsg">👋 أهلاً بك في منصة الفحص الثلجية <strong>AutoDiag Ultra V3</strong><br>اضغط على التبويبات أعلاه للبدء في الفحص الحقيقي 🔧🚘</div>
+
+<div class="tab-buttons">
+  <button onclick="showTab('tab1')">🚗 المركبة</button>
+  <button onclick="showTab('tab2')">📡 الحساسات</button>
+  <button onclick="showTab('tab3')">🧯 الأعطال</button>
+  <button onclick="showTab('tab4')">🧰 الضبط</button>
+  <button onclick="showTab('tab5')">📊 Dashboard</button>
+  <button onclick="showTab('tab6')">📄 التقرير</button>
+</div>
+
+<div id="tab1" class="tab-content active"></div>
+<div id="tab2" class="tab-content"></div>
+<div id="tab3" class="tab-content"></div>
+<div id="tab4" class="tab-content"></div>
+<div id="tab5" class="tab-content"></div>
+<div id="tab6" class="tab-content"></div>
+
+<script>
+function showTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(div => div.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  document.querySelectorAll('.tab-buttons button').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+}
+</script>
+<!-- داخل div#tab1 -->
+<div style="background:#e3f2fd;padding:15px;border-radius:10px;margin-bottom:15px;">
+  <h2>📋 معلومات المركبة</h2>
+  <label>🚗 اختر نوع المركبة:</label>
+  <select id="vehicleType" style="padding:8px;border-radius:6px;margin-left:10px;">
+    <option value="passenger">🚘 سيارة ركاب</option>
+    <option value="diesel">🚚 شاحنة ديزل</option>
+    <option value="agri">🚜 آلة زراعية</option>
+    <option value="electric">⚡ كهربائية</option>
+  </select>
+  <button onclick="startScan()" style="background:#1976d2;color:white;padding:8px 16px;border:none;border-radius:8px;margin-left:10px;">🔍 بدء الفحص</button>
+</div>
+
+<div id="status" style="margin-bottom:10px;background:#f0f8ff;padding:10px;border-radius:8px;">🧭 بانتظار الاتصال...</div>
+
+<div style="background:#fff;padding:15px;border:1px solid #ccc;border-radius:10px;">
+  <h3>🧠 تعريف المركبة</h3>
+  <p><b>VIN:</b> <span id="vinCode">--</span></p>
+  <p><b>نوع المركبة:</b> <span id="vehType">--</span></p>
+</div>
+
+<script>
+let obdChar, wifiSocket;
+
+function startScan() {
+  const type = document.getElementById("vehicleType").value;
+  document.getElementById("vehType").innerText = type;
+  document.getElementById("status").innerText = "🔌 جاري الاتصال...";
+
+  if (navigator.bluetooth) connectBluetooth();
+  else connectWiFi("192.168.0.10");
+}
+
+async function connectBluetooth() {
+  const device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'OBD' }], optionalServices: [0xFFE0] });
+  const server = await device.gatt.connect();
+  const service = await server.getPrimaryService(0xFFE0);
+  obdChar = await service.getCharacteristic(0xFFE1);
+  document.getElementById("status").innerText = "✅ تم الاتصال عبر Bluetooth";
+}
+
+function connectWiFi(ip) {
+  wifiSocket = new WebSocket(`ws://${ip}:35000`);
+  wifiSocket.onopen = () => document.getElementById("status").innerText = "✅ تم الاتصال عبر WiFi";
+  wifiSocket.onerror = () => document.getElementById("status").innerText = "❌ فشل الاتصال";
+}
+
+async function sendOBD(cmd) {
+  if (typeof sendBluetooth === 'function') return await sendBluetooth(cmd);
+  if (typeof sendWiFi === 'function') return await sendWiFi(cmd);
+  return "NO RESPONSE";
+}
+
+async function sendBluetooth(cmd) {
+  const encoder = new TextEncoder();
+  await obdChar.writeValue(encoder.encode(cmd + "\r"));
+  await new Promise(r => setTimeout(r, 300));
+  const val = await obdChar.readValue();
+  return new TextDecoder().decode(val);
+}
+
+function sendWiFi(cmd) {
+  return new Promise(resolve => {
+    wifiSocket.send(cmd + "\r");
+    wifiSocket.onmessage = e => resolve(e.data);
+  });
+}
+</script>
+<!-- داخل div#tab2 -->
+<div style="background:#fff;padding:15px;border-radius:10px;border:1px solid #ccc;">
+  <h2>📡 الحساسات اللحظية</h2>
+  <button onclick="readSensorData()" style="background:#1976d2;color:white;padding:8px 16px;border:none;border-radius:8px;">🔍 فحص الآن</button>
+  <div id="sensorLive" style="margin-top:15px;"></div>
+  <canvas id="sensorChart" width="600" height="250" style="margin-top:15px;"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let sensorChart;
+const ctxSensor = document.getElementById("sensorChart").getContext("2d");
+sensorChart = new Chart(ctxSensor, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: "RPM", data: [], borderColor: "red", fill: false },
+      { label: "TEMP", data: [], borderColor: "blue", fill: false },
+      { label: "LOAD", data: [], borderColor: "green", fill: false }
+    ]
+  },
+  options: { responsive: true }
+});
+
+async function readSensorData() {
+  const rpm = decodeValue("010C", await sendOBD("010C"));
+  const temp = decodeValue("0105", await sendOBD("0105"));
+  const load = decodeValue("0104", await sendOBD("0104"));
+  const time = new Date().toLocaleTimeString();
+
+  sensorChart.data.labels.push(time);
+  sensorChart.data.datasets[0].data.push(rpm);
+  sensorChart.data.datasets[1].data.push(temp);
+  sensorChart.data.datasets[2].data.push(load);
+  if (sensorChart.data.labels.length > 20) {
+    sensorChart.data.labels.shift();
+    sensorChart.data.datasets.forEach(ds => ds.data.shift());
+  }
+  sensorChart.update();
+
+  document.getElementById("sensorLive").innerHTML = `
+    <b>🔧 RPM:</b> ${rpm} | <b>🌡️ TEMP:</b> ${temp}°C | <b>⚙️ LOAD:</b> ${load}%
+  `;
+}
+</script>
+<!-- داخل div#tab3 -->
+<div style="background:#fff;padding:15px;border-radius:10px;border:1px solid #ccc;margin-bottom:15px;">
+  <h2>🧯 رموز الأعطال – DTC Analyzer</h2>
+  <button onclick="readDTC()" style="background:#1976d2;color:white;padding:8px 16px;border:none;border-radius:8px;">📋 قراءة الرموز</button>
+  <button onclick="clearDTC()" style="background:#d32f2f;color:white;padding:8px 16px;border:none;border-radius:8px;margin-left:10px;">🧹 مسح الأكواد</button>
+  <div id="dtcOutput" style="margin-top:15px;"></div>
+  <div id="clearOutput" style="margin-top:10px;"></div>
+</div>
+
+<div style="background:#fff;padding:15px;border-radius:10px;border:1px solid #ccc;">
+  <h3>📸 SnapSensor – لقطة لحظية</h3>
+  <button onclick="captureSnapshot()" style="background:#1976d2;color:white;padding:8px 16px;border:none;border-radius:8px;">📸 حفظ لقطة</button>
+  <canvas id="snapshotCanvas" width="500" height="250" style="display:none;"></canvas>
+</div>
+
+<script>
+let dtcLibrary = {};
+fetch("https://raw.githubusercontent.com/artiemos/dtc-analyzer-data/refs/heads/main/codes.json")
+  .then(res => res.json())
+  .then(data => dtcLibrary = data);
+
+function parseDTC(res) {
+  const bytes = res.replace(/[\s\r\n]/g,"").match(/.{2}/g) || [];
+  let dtcList = [];
+  for (let i = 2; i < bytes.length; i += 2) {
+    if (bytes[i] === "00" && bytes[i+1] === "00") continue;
+    const hi = parseInt(bytes[i],16);
+    const lo = parseInt(bytes[i+1],16);
+    const type = ["P","C","B","U"][(hi & 0xC0)>>6];
+    const code = type + ((hi & 0x3F).toString(16).padStart(2,'0') + lo.toString(16).padStart(2,'0')).toUpperCase();
+    dtcList.push(code);
+  }
+  return dtcList;
+}
+
+async function readDTC() {
+  const res = await sendOBD("03");
+  const codes = parseDTC(res);
+  let html = "<ul>";
+  codes.forEach(code => {
+    const info = dtcLibrary[code];
+    html += `<li><b>${code}</b>: ${info ? info.description : "❓ غير معروف"}</li>`;
+  });
+  html += "</ul>";
+  document.getElementById("dtcOutput").innerHTML = html || "✅ لا توجد رموز أعطال";
+}
+
+function clearDTC() {
+  sendOBD("04").then(() => {
+    document.getElementById("clearOutput").innerText = "✅ تم مسح رموز الأعطال بنجاح.";
+  });
+}
+
+function captureSnapshot() {
+  const canvas = document.getElementById("snapshotCanvas");
+  const ctx = canvas.getContext("2d");
+  const rpm = document.getElementById("gaugeRPM")?.innerText || "0";
+  const temp = document.getElementById("gaugeTEMP")?.innerText || "0°C";
+  const load = document.getElementById("gaugeLOAD")?.innerText || "0%";
+
+  ctx.fillStyle = "#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = "#000"; ctx.font = "18px Arial";
+  ctx.fillText("📸 AutoDiag Snapshot", 10, 30);
+  ctx.fillText("🧠 RPM: " + rpm, 10, 70);
+  ctx.fillText("🌡️ TEMP: " + temp, 10, 110);
+  ctx.fillText("⚙️ LOAD: " + load, 10, 150);
+  ctx.fillText("📅 " + new Date().toLocaleString(), 10, 190);
+
+  const link = document.createElement("a");
+  link.download = "AutoDiag_Snapshot.png";
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+}
+</script>
+<!-- داخل div#tab5 -->
+<div style="background:#fff;padding:15px;border-radius:10px;border:1px solid #ccc;margin-bottom:15px;">
+  <h2>📊 لوحة الحساسات اللحظية</h2>
+  <div style="display:flex;gap:15px;justify-content:center;margin-bottom:15px;">
+    <div style="background:#e3f2fd;padding:10px;border-radius:10px;width:120px;text-align:center;">
+      <h4>🔥 RPM</h4>
+      <div id="gaugeRPM" style="font-size:24px;font-weight:bold;">0</div>
+    </div>
+    <div style="background:#fce4ec;padding:10px;border-radius:10px;width:120px;text-align:center;">
+      <h4>🌡️ TEMP</h4>
+      <div id="gaugeTEMP" style="font-size:24px;font-weight:bold;">0°C</div>
+    </div>
+    <div style="background:#e8f5e9;padding:10px;border-radius:10px;width:120px;text-align:center;">
+      <h4>⚙️ LOAD</h4>
+      <div id="gaugeLOAD" style="font-size:24px;font-weight:bold;">0%</div>
+    </div>
+  </div>
+  <button onclick="updateDashboardNow()" style="background:#1976d2;color:white;padding:8px 16px;border:none;border-radius:8px;">🔄 تحديث الآن</button>
+</div>
+
+<div style="background:#fff;padding:15px;border-radius:10px;border:1px solid #ccc;">
+  <h3>📈 تحليل مباشر للحساسات الثلاثة</h3>
+  <canvas id="multiChart" width="600" height="250"></canvas>
+</div>
+
+<script>
+let multiChart;
+const ctxDash = document.getElementById("multiChart").getContext("2d");
+multiChart = new Chart(ctxDash, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: "RPM", data: [], borderColor: "red", fill: false },
+      { label: "TEMP", data: [], borderColor: "blue", fill: false },
+      { label: "LOAD", data: [], borderColor: "green", fill: false }
+    ]
+  },
+  options: { responsive: true }
+});
+
+async function updateDashboardNow() {
+  const rpm = decodeValue("010C", await sendOBD("010C"));
+  const temp = decodeValue("0105", await sendOBD("0105"));
+  const load = decodeValue("0104", await sendOBD("0104"));
+
+  document.getElementById("gaugeRPM").innerText = rpm;
+  document.getElementById("gaugeTEMP").innerText = temp + "°C";
+  document.getElementById("gaugeLOAD").innerText = load + "%";
+
+  const time = new Date().toLocaleTimeString();
+  multiChart.data.labels.push(time);
+  multiChart.data.datasets[0].data.push(rpm);
+  multiChart.data.datasets[1].data.push(temp);
+  multiChart.data.datasets[2].data.push(load);
+  if (multiChart.data.labels.length > 20) {
+    multiChart.data.labels.shift();
+    multiChart.data.datasets.forEach(ds => ds.data.shift());
+  }
+  multiChart.update();
+}
+</script> 
+<!-- داخل div#tab6 -->
+<div style="background:#fff;padding:15px;border-radius:10px;border:1px solid #ccc;">
+  <h2>📄 توليد تقرير الفحص الكامل</h2>
+  <button onclick="generatePDF()" style="background:#1976d2;color:white;padding:8px 16px;border:none;border-radius:8px;">📤 تحميل PDF</button>
+  <button onclick="saveJSON()" style="background:#388e3c;color:white;padding:8px 16px;border:none;border-radius:8px;margin-left:10px;">💾 حفظ JSON</button>
+  <button onclick="loadSession()" style="background:#fbc02d;color:white;padding:8px 16px;border:none;border-radius:8px;margin-left:10px;">📂 تحميل جلسة</button>
+  <div id="reportOutput" style="margin-top:15px;"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+let sessionData = {};
+
+function generatePDF() {
+  const vehType = document.getElementById("vehicleType")?.value || "--";
+  const vin = document.getElementById("vinCode")?.innerText || "--";
+  const dtcs = document.getElementById("dtcOutput")?.innerText || "--";
+  const resets = document.getElementById("resetOutput")?.innerText || "--";
+  const date = new Date().toLocaleString();
+
+  const html = `
+    <div style="font-family:'Segoe UI';padding:20px;">
+      <h2>🛠️ تقرير فحص مركبة – AutoDiag Ultra V3</h2>
+      <p><b>نوع المركبة:</b> ${vehType}</p>
+      <p><b>رقم VIN:</b> ${vin}</p>
+      <p><b>تاريخ الفحص:</b> ${date}</p>
+      <hr>
+      <h3>🧯 رموز الأعطال:</h3>
+      <pre>${dtcs}</pre>
+      <hr>
+      <h3>🧰 عمليات إعادة الضبط:</h3>
+      <pre>${resets}</pre>
+      <hr>
+      <footer style="text-align:center;margin-top:30px;">
+        ⛽ تم توليد التقرير بواسطة <strong>AutoDiag Ultra V3</strong><br>
+        Developed by <strong>AMRO TECH</strong>
+      </footer>
+    </div>
+  `;
+  html2pdf().from(html).save(`AutoDiag_Report_${vin || 'Vehicle'}.pdf`);
+  document.getElementById("reportOutput").innerText = "✅ تم توليد التقرير بنجاح.";
+}
+
+function saveJSON() {
+  sessionData = {
+    type: document.getElementById("vehicleType")?.value || "--",
+    vin: document.getElementById("vinCode")?.innerText || "--",
+    dtc: document.getElementById("dtcOutput")?.innerText || "--",
+    reset: document.getElementById("resetOutput")?.innerText || "--",
+    time: new Date().toLocaleString()
+  };
+  const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `AutoDiag_Session_${sessionData.vin || 'Vehicle'}.json`;
+  a.click();
+  document.getElementById("reportOutput").innerText = "✅ تم حفظ الجلسة كـ JSON.";
+}
+
+function loadSession() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json";
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      const data = JSON.parse(reader.result);
+      sessionData = data;
+      document.getElementById("vinCode").innerText = data.vin;
+      document.getElementById("vehType").innerText = data.type;
+      document.getElementById("dtcOutput").innerText = data.dtc;
+      document.getElementById("resetOutput").innerText = data.reset;
+      document.getElementById("reportOutput").innerText = "✅ تم تحميل الجلسة السابقة.";
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+</script>
